@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>주사위 보드게임 (이름 커스터마이즈 + 입력 이동)</title>
+<style>
+  :root{
+    --accent:#2563eb;
+    --sidebar: 420px; /* 사이드 패널 폭: 필요하면 380~460px로 조정 */
+    --gap: 24px;      /* 좌/우 컬럼 간격 */
+    --pad: 20px;      /* 바깥 패딩 */
+  }
+  *{ box-sizing:border-box; }
+  html, body{ height:100%; }
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+    background:#f6f7fb;
+  }
+
+  /* 레이아웃: 한 화면에 딱 맞추기 */
+  .wrap{
+    display:flex; gap:var(--gap); padding:var(--pad);
+    align-items:flex-start; height:100vh; overflow:hidden;
+  }
+
+  /* 보드 컨테이너: 화면 안으로 제한 */
+  #game-container{
+    position:relative; display:inline-block; border-radius:16px; overflow:hidden; background:#fff;
+    box-shadow:0 8px 24px rgba(0,0,0,.08);
+    max-width: calc(100vw - var(--sidebar) - var(--gap) - var(--pad)*2);
+    max-height: calc(100vh - var(--pad)*2);
+  }
+  /* 이미지가 컨테이너 안에서 늘/줄어 화면에 맞게 */
+  #board{ display:block; width:100%; height:auto; max-height: calc(100vh - var(--pad)*2); }
+
+  /* 말(토큰) — 요청: 조금 작게 */
+  .piece{
+    position:absolute;
+    width:18px; height:18px;          /* 기존 24px → 18px */
+    border-radius:50%;
+    border:2px solid #000;
+    transform:translate(-50%,-50%);
+    box-shadow:0 2px 6px rgba(0,0,0,.25);
+  }
+  .piece::after{
+    content:attr(data-i);
+    position:absolute; inset:-2px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px;                    /* 글자도 살짝 축소 */
+    font-weight:800; color:#111;
+    text-shadow:0 1px 2px rgba(255,255,255,.8);
+  }
+
+  aside{
+    width:var(--sidebar); background:#fff; border-radius:16px;
+    box-shadow:0 8px 24px rgba(0,0,0,.08); padding:18px;
+    position:sticky; top:20px;
+    max-height: calc(100vh - var(--pad)*2);
+    overflow:auto;
+  }
+  h1{ margin:0 0 8px; font-size:20px; }
+  .row{ display:flex; gap:10px; align-items:center; margin:8px 0; }
+  .row > *{ flex:1; }
+  label{ font-size:13px; color:#333; display:block; }
+  input[type="number"], input[type="text"], select{
+    width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:10px; outline:none; font-size:14px;
+  }
+  .btn{ appearance:none; border:none; border-radius:12px; padding:10px 12px; background:#111; color:#fff; font-weight:700; cursor:pointer; }
+  .btn.accent{ background:var(--accent); }
+  .btn.ghost{ background:#eef2ff; color:#1e1b4b; }
+  .btn.warn{ background:#e11d48; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .sep{ height:1px; background:#eee; margin:12px 0; }
+  #message{ color:#065f46; font-weight:700; min-height:22px; }
+  #log{ font-size:12px; background:#0b1020; color:#cbd5e1; padding:10px; border-radius:10px; height:160px; overflow:auto; }
+  #nameList{ font-size:13px; line-height:1.7; color:#111; background:#fafafa; border:1px solid #eee; border-radius:10px; padding:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="game-container">
+    <!-- 같은 폴더에 board.png를 두세요 -->
+    <img id="board" src="board.png" alt="보드게임판" />
+  </div>
+
+  <aside>
+    <h1>주사위 게임</h1>
+
+    <div class="row">
+      <label>말 선택
+        <select id="pieceSelect"></select>
+      </label>
+      <label>인원수
+        <select id="playerCount">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label>주사위 1
+        <input id="dice1" type="number" min="1" max="6" value="1" />
+      </label>
+      <label>주사위 2
+        <input id="dice2" type="number" min="1" max="6" value="1" />
+      </label>
+    </div>
+    <div class="grid2">
+      <button id="rollBtn" class="btn accent">주사위 굴리기</button>
+      <button id="moveBtn" class="btn">이동</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- 말 이름 편집 영역 -->
+    <div class="row">
+      <label>현재 말 이름
+        <input id="nameInput" type="text" placeholder="예: 양떼" />
+      </label>
+      <button id="saveNameBtn" class="btn ghost" style="flex:0 0 auto;">이름 저장</button>
+    </div>
+    <div id="nameList"></div>
+
+    <div class="sep"></div>
+    <div class="grid2">
+      <button id="resetBtn" class="btn warn">리셋</button>
+      <button id="saveBtn" class="btn ghost">저장</button>
+    </div>
+    <div id="message"></div>
+
+    <div class="sep"></div>
+    <div id="log"></div>
+  </aside>
+</div>
+
+<script>
+// ===== 좌표 (원본 이미지 해상도 기준) =====
+const positions = [
+  [5045,7526],[4339,7504],[3650,7353],[3144,7327],[2620,7260],
+  [2149,7136],[1776,6922],[1363,6665],[1048,6327],[1052,5945],
+  [1332,5616],[1701,5439],[1954,5266],[2354,5070],[2727,4928],
+  [3073,4795],[3410,4653],[3695,4493],[3943,4355],[4223,4155],
+  [4383,3915],[4299,3640],[3966,3480],[3668,3355],[3384,3236],
+  [3126,3200],[2864,3107],[2629,3036],[2367,2947],[2123,2880],
+  [1896,2787],[1670,2716],[1439,2563],[1226,2430],[1119,2217],
+  [1230,2012],[1390,1883],[1545,1763],[1692,1706],[1865,1621],
+  [2034,1586],[2198,1506],[2340,1453],[2500,1408],[2633,1341],
+  [2767,1310],[2922,1266],[3055,1195],[3126,1075],[3539,684]
+];
+
+// (선택) 순간이동 규칙 — 원하면 수정/추가하세요
+const warps = { 3:17, 30:13, 44:27 };
+
+// ===== 기본 설정 =====
+const totalCells = positions.length;
+const maxPieces = 8;
+const pieceColors = ["#ef4444","#3b82f6","#22c55e","#f59e0b","#a855f7","#ec4899","#eab308","#06b6d4"];
+
+let piecePositions = JSON.parse(localStorage.getItem('piecePositions_v4')||'null') || Array(maxPieces).fill(1);
+/* 말 이름: 기본은 '1','2','3'… → 사용자 입력으로 교체 */
+let pieceNames = JSON.parse(localStorage.getItem('pieceNames_v2')||'null')
+                || Array(maxPieces).fill('').map((_,i)=> String(i+1));
+
+const container = document.getElementById('game-container');
+const board = document.getElementById('board');
+const pieceSelect = document.getElementById('pieceSelect');
+const playerCountSel = document.getElementById('playerCount');
+const dice1El = document.getElementById('dice1');
+const dice2El = document.getElementById('dice2');
+const moveBtn = document.getElementById('moveBtn');
+const rollBtn = document.getElementById('rollBtn');
+const resetBtn = document.getElementById('resetBtn');
+const saveBtn = document.getElementById('saveBtn');
+const msgEl = document.getElementById('message');
+const logEl = document.getElementById('log');
+const nameInput = document.getElementById('nameInput');
+const saveNameBtn = document.getElementById('saveNameBtn');
+const nameList = document.getElementById('nameList');
+
+// 말 DOM
+const pieces = [];
+for (let i=0;i<maxPieces;i++){
+  const el=document.createElement('div');
+  el.className='piece';
+  el.style.background=pieceColors[i];
+  el.dataset.i = pieceNames[i] || String(i+1); // ← 커스텀 이름 표시
+  container.appendChild(el);
+  pieces.push(el);
+}
+
+// 셀렉트 채우기
+function fillSelect(){
+  pieceSelect.innerHTML='';
+  const cnt = parseInt(playerCountSel.value);
+  for (let i=1;i<=cnt;i++){
+    const op=document.createElement('option');
+    const label = pieceNames[i-1] && pieceNames[i-1]!==String(i) ? `${i}번 말 — ${pieceNames[i-1]}` : `${i}번 말`;
+    op.value=i; op.textContent=label;
+    pieceSelect.appendChild(op);
+  }
+  // 선택된 말의 이름 입력칸 갱신
+  syncNameInput();
+}
+
+// 보드 스케일 변환
+function getScale(){
+  return { scaleX: board.clientWidth / board.naturalWidth, scaleY: board.clientHeight / board.naturalHeight };
+}
+function natToScreen([x,y]){ const {scaleX,scaleY}=getScale(); return [x*scaleX, y*scaleY]; }
+
+// 말 위치 업데이트
+function updatePiecePositions(){
+  const cnt = parseInt(playerCountSel.value);
+  pieces.forEach((el,idx)=>{
+    if (idx<cnt){
+      el.style.display='block';
+      const cell = clamp(piecePositions[idx],1,totalCells);
+      const [x,y] = positions[cell-1];
+      const [sx,sy] = natToScreen([x,y]);
+      el.style.left = sx + 'px';
+      el.style.top  = sy + 'px';
+      // 라벨은 최신 이름으로
+      el.dataset.i = pieceNames[idx] || String(idx+1);
+    } else {
+      el.style.display='none';
+    }
+  });
+  localStorage.setItem('piecePositions_v4', JSON.stringify(piecePositions));
+}
+
+function updateSelectLabels(){
+  // 옵션 텍스트도 최신 이름 반영
+  Array.from(pieceSelect.options).forEach((op,i)=>{
+    const idx = i; const num = idx+1;
+    const label = pieceNames[idx] && pieceNames[idx]!==String(num) ? `${num}번 말 — ${pieceNames[idx]}` : `${num}번 말`;
+    op.textContent = label;
+  });
+}
+
+// 이름 입력칸 동기화
+function syncNameInput(){
+  const idx = (parseInt(pieceSelect.value)||1)-1;
+  nameInput.value = pieceNames[idx] || String(idx+1);
+  renderNameList();
+}
+
+// 말 이름 목록 렌더
+function renderNameList(){
+  const cnt = parseInt(playerCountSel.value);
+  const items = [];
+  for (let i=0;i<cnt;i++){
+    const n = pieceNames[i] || String(i+1);
+    items.push(`${i+1}번 말 : ${n}`);
+  }
+  nameList.textContent = items.join('\n');
+}
+
+// 도우미
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function log(t){ const time = new Date().toLocaleTimeString(); logEl.innerHTML = `[${time}] ${t}<br>` + logEl.innerHTML; }
+function setMsg(t,ok=true){ msgEl.style.color = ok? '#065f46':'#991b1b'; msgEl.textContent=t; }
+function roll(){ return 1 + Math.floor(Math.random()*6); }
+
+// 이동 처리
+function applyMove(selectedIndex, d1, d2){
+  const idx = selectedIndex - 1;
+  const sum = clamp(parseInt(d1)||0,1,6) + clamp(parseInt(d2)||0,1,6);
+  let newPos = piecePositions[idx] + sum;
+  if (newPos > totalCells) newPos = totalCells;
+  if (warps[newPos]) newPos = warps[newPos];
+  piecePositions[idx] = newPos;
+  updatePiecePositions();
+
+  const name = pieceNames[idx] || String(selectedIndex);
+  if (newPos === totalCells){
+    setMsg(`${selectedIndex}번 말(${name})이 결승점 도착! 🎉`);
+    log(`${selectedIndex}번 말(${name}) FINISH`);
+  } else {
+    setMsg(`${selectedIndex}번 말(${name})이 ${newPos}번 칸으로 이동 (합계 ${sum})`);
+    log(`${selectedIndex}번 말(${name}): +${sum} → ${newPos}`);
+  }
+}
+
+// 이벤트 바인딩
+moveBtn.addEventListener('click',()=>{
+  applyMove(parseInt(pieceSelect.value), dice1El.value, dice2El.value);
+});
+rollBtn.addEventListener('click',()=>{
+  const r1=roll(), r2=roll();
+  dice1El.value=r1; dice2El.value=r2;
+  applyMove(parseInt(pieceSelect.value), r1, r2);
+});
+resetBtn.addEventListener('click',()=>{
+  piecePositions = Array(maxPieces).fill(1);
+  updatePiecePositions();
+  setMsg('리셋 완료.');
+  log('모든 말 위치 1번으로 초기화');
+});
+saveBtn.addEventListener('click',()=>{
+  localStorage.setItem('piecePositions_v4', JSON.stringify(piecePositions));
+  localStorage.setItem('pieceNames_v2', JSON.stringify(pieceNames));
+  setMsg('저장되었습니다.');
+});
+
+// 이름 저장
+saveNameBtn.addEventListener('click',()=>{
+  const idx = (parseInt(pieceSelect.value)||1)-1;
+  const val = (nameInput.value || '').trim();
+  pieceNames[idx] = val || String(idx+1); // 빈 값이면 번호로
+  localStorage.setItem('pieceNames_v2', JSON.stringify(pieceNames));
+  updatePiecePositions();   // 토큰 라벨 즉시 반영
+  updateSelectLabels();     // 셀렉트 라벨 갱신
+  renderNameList();
+  setMsg(`${idx+1}번 말 이름이 "${pieceNames[idx]}"(으)로 저장되었습니다.`);
+});
+
+// 선택/인원수 변경 시
+pieceSelect.addEventListener('change', syncNameInput);
+playerCountSel.addEventListener('change',()=>{ fillSelect(); updatePiecePositions(); renderNameList(); });
+
+window.addEventListener('resize', updatePiecePositions);
+board.addEventListener('load', ()=>{ updatePiecePositions(); fillSelect(); renderNameList(); });
+if (board.complete){ updatePiecePositions(); fillSelect(); renderNameList(); }
+</script>
+</body>
+</html>
